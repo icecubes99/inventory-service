@@ -1,15 +1,354 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql" 
   url      = env("DATABASE_URL")
+}
+
+// --- Enums ---
+enum Role {
+  ADMIN
+  PURCHASER
+  INVENTORY_MASTER
+  ACCOUNTING
+  FOREMAN 
+  WAREHOUSE_MANAGER
+}
+
+enum LocationType {
+  WAREHOUSE
+  SITE
+}
+
+enum MrfClassification {
+  BORROW
+  CONSUME
+}
+
+enum MrfStatus {
+  DRAFT // Request being created
+  SUBMITTED // Sent to C. Warehouse
+  APPROVED // Approved by Warehouse Manager
+  REJECTED // Rejected by Warehouse Manager
+  FULFILLED // Materials delivered from C. Warehouse/other Site
+  CANCELLED // Request cancelled
+}
+
+enum PoStatus {
+  DRAFT // PO being created
+  SENT // PO sent to supplier
+  PARTIALLY_RECEIVED // Some items received
+  FULLY_RECEIVED // All items received
+  CANCELLED // PO cancelled
+}
+
+enum DrType {
+  SUPPLIER // Delivery from a Supplier to C. Warehouse
+  INTERNAL // Delivery from C. Warehouse to Site, or Site to Site
+}
+
+enum DrStatus {
+  DRAFT // DR being created (for internal transfers)
+  RECEIVED // Materials received and DR recorded
+  PROCESSED // Inventory updated based on DR
+}
+
+enum InvoiceStatus {
+  RECEIVED // Invoice received from Supplier
+  PROCESSED // Matched with PO/DR internally
+  APPROVED_FOR_PAYMENT // Ready for PV creation
+  PAID // Payment completed
+  CANCELLED // Invoice cancelled
+}
+
+enum PvStatus {
+  DRAFT // Payment voucher being created
+  APPROVED // Approved by Warehouse Manager
+  PAID // Payment released
+  CANCELLED // Payment voucher cancelled
+}
+
+
+// --- Models ---
+
+model User {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  passwordHash  String // Store hashed passwords!
+  name          String
+  email         String    @unique // Optional: Ensure uniqueness if needed
+  role          Role
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations: Documents created/approved by this user
+  requestedMrfs Mrf[] @relation("RequestedBy")
+  approvedMrfs  Mrf[] @relation("ApprovedBy")
+  approvedPvs   PaymentVoucher[] @relation("ApprovedBy")
+  // Add relations for documents created by this user if needed (e.g., createdPos)
+}
+
+model Location {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  type          LocationType
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  MrfsFrom      Mrf[] @relation("MrfFromLocation") // MRFs originating from this location (Sites)
+  DeliveriesTo  DeliveryReceipt[] @relation("DeliveryToLocation") // Materials received at this location
+  DeliveriesFrom DeliveryReceipt[] @relation("DeliveryFromLocation") // Materials sent from this location (C. Warehouse or Sites)
+
+  // Inventory at this location
+  inventory     InventoryItem[]
+}
+
+model Item {
+  id              String          @id @default(uuid())
+  code            String          @unique
+  description     String
+  unitOfMeasurement String // e.g., "pieces", "boxes", "kg"
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations: Used in document line items and inventory
+  mrfLineItems    MrfLineItem[]
+  poLineItems     PoLineItem[]
+  drLineItems     DrLineItem[]
+  inventoryItems  InventoryItem[]
+}
+
+model Supplier {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  contactInfo   String? // Optional contact details
+  paymentTerms  String // e.g., "Net 30", "Due on Receipt"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
+}
+
+// --- Documents ---
+
+// Material Request Form (MRF) - Created by Sites
+model Mrf {
+  id               String              @id @default(uuid())
+  referenceNumber  String              @unique // Date-based format, e.g., "MRF-YYYYMMDD-XXXX"
+  fromLocationId   String // Site requesting
+  fromLocation     Location            @relation("MrfFromLocation", fields: [fromLocationId], references: [id])
+
+  dateRequested    DateTime @default(now())
+  dateNeeded       DateTime
+
+  status           MrfStatus @default(DRAFT)
+  classification   MrfClassification // Borrow or Consume
+
+  requestedById    String // User who created the request (e.g., Foreman)
+  requestedBy      User                @relation("RequestedBy", fields: [requestedById], references: [id])
+
+  // Warehouse Manager approves MRF
+  approvedById     String? // Null until approved
+  approvedBy       User?               @relation("ApprovedBy", fields: [approvedById], references: [id])
+  dateApproved     DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Line items for the requested materials
+  lineItems        MrfLineItem[]
+
+  // Relation: Link to the Delivery Receipt that fulfilled this MRF (Optional: 1:1 or 1:Many if partially fulfilled)
+  // fulfilledByDr    DeliveryReceipt? @relation("MrfFulfilledBy") // Simple 1:1 assumption for now
+}
+
+model MrfLineItem {
+  id               String @id @default(uuid())
+  mrfId            String // Link to the MRF header
+  mrf              Mrf    @relation(fields: [mrfId], references: [id], onDelete: Cascade) // Delete line items if MRF is deleted
+
+  itemId           String
+  item             Item   @relation(fields: [itemId], references: [id])
+
+  requestedQuantity Float
+  approvedQuantity  Float? // Quantity approved by Warehouse Manager (can differ from requested)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+
+// Purchase Order (PO) - Created by Central Warehouse Purchasing
+model PurchaseOrder {
+  id               String            @id @default(uuid())
+  referenceNumber  String            @unique // Date-based format, e.g., "PO-YYYYMMDD-XXXX"
+  supplierId       String
+  supplier         Supplier          @relation(fields: [supplierId], references: [id])
+
+  dateCreated      DateTime @default(now())
+  status           PoStatus @default(DRAFT)
+
+  // Link back to original requests? (Optional: Could be many MRFs to one PO, complex relation)
+  // mrfIds           String[] // Scalar list of related MRF IDs (less relational)
+  // relatedMrfs Mrf[] @relation("PoRelatedMrfs") // Many-to-Many linking table needed if complex
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Line items for the ordered materials
+  lineItems        PoLineItem[]
+
+  // Delivery Receipts linked to this PO (partial deliveries possible)
+  deliveryReceipts DeliveryReceipt[]
+}
+
+model PoLineItem {
+  id               String @id @default(uuid())
+  purchaseOrderId  String // Link to the PO header
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  itemId           String
+  item             Item   @relation(fields: [itemId], references: [id])
+
+  quantity         Float // Quantity ordered
+  unitPrice        Float // Price per unit
+  amount           Float // quantity * unitPrice (can be calculated but often stored)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// Delivery Receipt (DR) - For Supplier Deliveries AND Internal Transfers
+model DeliveryReceipt {
+  id               String           @id @default(uuid())
+  referenceNumber  String           @unique // Auto-generated? e.g., "DR-YYYYMMDD-XXXX"
+  type             DrType // Supplier or Internal
+
+  // Optional: Link to the PO for Supplier Deliveries
+  purchaseOrderId  String? // Null for Internal transfers
+  purchaseOrder    PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
+
+  // Optional: Link to the fulfilling MRF for Internal transfers (e.g., C. Warehouse delivering to Site based on MRF)
+  // mrfId            String? // Null for Supplier deliveries - Simple 1:1 assumed earlier, could be complex
+  // mrf              Mrf? @relation("MrfFulfilledBy", fields: [mrfId], references: [id])
+
+  // Locations for the delivery/transfer
+  fromLocationId   String? // Null for Supplier deliveries
+  fromLocation     Location?        @relation("DeliveryFromLocation", fields: [fromLocationId], references: [id])
+
+  toLocationId     String // C. Warehouse receiving from Supplier, or Site receiving from C. Warehouse/Site
+  toLocation       Location         @relation("DeliveryToLocation", fields: [toLocationId], references: [id])
+
+  dateReceived     DateTime @default(now())
+  status           DrStatus @default(RECEIVED) // Or DRAFT if created before actual receipt for internal transfers
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Line items for the materials received
+  lineItems        DrLineItem[]
+}
+
+model DrLineItem {
+  id               String @id @default(uuid())
+  deliveryReceiptId String // Link to the DR header
+  deliveryReceipt  DeliveryReceipt @relation(fields: [deliveryReceiptId], references: [id], onDelete: Cascade)
+
+  itemId           String
+  item             Item   @relation(fields: [itemId], references: [id])
+
+  quantity         Float // Quantity received
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// Invoice - Received from Suppliers
+model Invoice {
+  id               String @id @default(uuid())
+  invoiceNumber    String // Supplier's invoice number
+  supplierId       String
+  supplier         Supplier @relation(fields: [supplierId], references: [id])
+
+  dateIssued       DateTime
+  dateReceived     DateTime @default(now())
+
+  amount           Float // Total invoice amount
+
+  status           InvoiceStatus @default(RECEIVED)
+
+  // Optional: Link to related POs or DRs (can be complex, maybe store reference or link via a linking table)
+  // For simplicity, let's add a text field to reference POs or link to ONE PO
+  poReference      String? // Free text field to list related PO numbers
+  // Or, link to ONE PO:
+  // purchaseOrderId  String?
+  // purchaseOrder    PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relation to Payment Vouchers (Many Invoices can be paid by One PV)
+  paymentVouchers  PaymentVoucher[] // Indirect relation via _InvoiceToPaymentVoucher
+}
+
+// Payment Voucher (PV) - Created by Accounting, Approved by C. Warehouse Manager
+model PaymentVoucher {
+  id               String @id @default(uuid())
+  referenceNumber  String @unique // Auto-generated, e.g., "PV-YYYYMMDD-XXXX"
+
+  dateCreated      DateTime @default(now())
+  amount           Float // Total amount to be paid (sum of linked invoices)
+  status           PvStatus @default(DRAFT)
+
+  // Central Warehouse Manager approves the payment
+  approvedById     String? // Null until approved
+  approvedBy       User? @relation("ApprovedBy", fields: [approvedById], references: [id])
+  dateApproved     DateTime?
+
+  paymentDate      DateTime? // Date the actual payment was made
+  paymentMethod    String? // e.g., "Check", "Bank Transfer"
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relation to Invoices (One PV can pay for Many Invoices)
+  invoices         Invoice[] // Indirect relation via _InvoiceToPaymentVoucher
+}
+
+// Linking table for Many-to-Many between Invoice and PaymentVoucher
+// Prisma automatically creates this table if you define the relation on both sides
+// using the List syntax []
+// model _InvoiceToPaymentVoucher {
+//   A String @relation(fields: [A], references: [id])
+//   B String @relation(fields: [B], references: [id])
+//   @@unique([A, B])
+// }
+
+
+// --- Inventory ---
+
+// Represents the quantity of a specific Item at a specific Location
+model InventoryItem {
+  id               String    @id @default(uuid())
+  locationId       String
+  location         Location  @relation(fields: [locationId], references: [id])
+
+  itemId           String
+  item             Item      @relation(fields: [itemId], references: [id])
+
+  quantity         Float     @default(0) // Current stock level
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Ensure only one entry per item per location
+  @@unique([locationId, itemId])
 }
