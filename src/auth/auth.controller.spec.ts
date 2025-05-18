@@ -9,6 +9,7 @@ describe('AuthController', () => {
   const mockAuthService = {
     login: jest.fn(),
     logout: jest.fn(),
+    refreshToken: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -38,6 +39,7 @@ describe('AuthController', () => {
 
       const expectedResponse = {
         access_token: 'test-token',
+        refresh_token: 'refresh-token',
         user: {
           id: '1',
           username: 'testuser',
@@ -72,10 +74,49 @@ describe('AuthController', () => {
     });
   });
 
+  describe('refreshToken', () => {
+    it('should return new access and refresh tokens when refresh token is valid', async () => {
+      const refreshTokenDto = {
+        refreshToken: 'valid-refresh-token',
+      };
+
+      const expectedResponse = {
+        access_token: 'new-test-token',
+        refresh_token: 'new-refresh-token',
+      };
+
+      mockAuthService.refreshToken.mockResolvedValue(expectedResponse);
+
+      const result = await controller.refreshToken(refreshTokenDto);
+
+      expect(result).toEqual(expectedResponse);
+      expect(mockAuthService.refreshToken).toHaveBeenCalledWith(
+        refreshTokenDto,
+      );
+    });
+
+    it('should throw UnauthorizedException when refresh token is invalid', async () => {
+      const refreshTokenDto = {
+        refreshToken: 'invalid-refresh-token',
+      };
+
+      mockAuthService.refreshToken.mockRejectedValue(
+        new UnauthorizedException('Invalid refresh token'),
+      );
+
+      await expect(controller.refreshToken(refreshTokenDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockAuthService.refreshToken).toHaveBeenCalledWith(
+        refreshTokenDto,
+      );
+    });
+  });
+
   describe('logout', () => {
     it('should call authService.logout with the token', () => {
       const token = 'test-token';
-      controller.logout(token);
+      controller.logout(`Bearer ${token}`);
       expect(mockAuthService.logout).toHaveBeenCalledWith(token);
     });
 

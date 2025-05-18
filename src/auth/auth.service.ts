@@ -4,6 +4,7 @@ import { UserService } from '../user/user.service';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { TokenBlacklistService } from './token-blacklist.service';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 @Injectable()
 export class AuthService {
@@ -35,8 +36,14 @@ export class AuthService {
       role: user.role,
     };
 
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.sign(payload, { expiresIn: '15m' }),
+      this.jwtService.sign(payload, { expiresIn: '7d' }),
+    ]);
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: accessToken,
+      refresh_token: refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -45,6 +52,38 @@ export class AuthService {
         role: user.role,
       },
     };
+  }
+
+  async refreshToken(refreshTokenDto: RefreshTokenDto) {
+    try {
+      const payload = await this.jwtService.verify(
+        refreshTokenDto.refreshToken,
+      );
+      const user = await this.userService.findOne(payload.sub);
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      const newPayload = {
+        username: user.username,
+        sub: user.id,
+        role: user.role,
+      };
+
+      const [newAccessToken, newRefreshToken] = await Promise.all([
+        this.jwtService.sign(newPayload, { expiresIn: '15m' }),
+        this.jwtService.sign(newPayload, { expiresIn: '7d' }),
+      ]);
+
+      return {
+        access_token: newAccessToken,
+        refresh_token: newRefreshToken,
+      };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (error) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
   }
 
   logout(token: string): void {

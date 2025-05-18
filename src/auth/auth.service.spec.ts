@@ -27,11 +27,13 @@ describe('AuthService', () => {
 
   const mockUserService = {
     findByUsername: jest.fn(),
+    findOne: jest.fn(),
   };
 
   const mockJwtService = {
     sign: jest.fn(),
     decode: jest.fn(),
+    verify: jest.fn(),
   };
 
   const mockTokenBlacklistService = {
@@ -95,7 +97,7 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('should return access token and user data when login is successful', async () => {
+    it('should return access token, refresh token and user data when login is successful', async () => {
       mockUserService.findByUsername.mockResolvedValue(mockUser);
       (jest.spyOn(bcrypt, 'compare') as jest.Mock).mockResolvedValue(true);
       mockJwtService.sign.mockReturnValue('test-token');
@@ -107,6 +109,7 @@ describe('AuthService', () => {
 
       expect(result).toEqual({
         access_token: 'test-token',
+        refresh_token: 'test-token',
         user: {
           id: mockUser.id,
           username: mockUser.username,
@@ -126,6 +129,52 @@ describe('AuthService', () => {
           username: 'testuser',
           password: 'wrongpassword',
         }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('refreshToken', () => {
+    it('should return new access and refresh tokens when refresh token is valid', async () => {
+      const payload = {
+        sub: mockUser.id,
+        username: mockUser.username,
+        role: mockUser.role,
+      };
+
+      mockJwtService.verify.mockResolvedValue(payload);
+      mockUserService.findOne.mockResolvedValue(mockUser);
+      mockJwtService.sign.mockReturnValue('new-test-token');
+
+      const result = await service.refreshToken({
+        refreshToken: 'valid-refresh-token',
+      });
+
+      expect(result).toEqual({
+        access_token: 'new-test-token',
+        refresh_token: 'new-test-token',
+      });
+    });
+
+    it('should throw UnauthorizedException when refresh token is invalid', async () => {
+      mockJwtService.verify.mockRejectedValue(new Error('Invalid token'));
+
+      await expect(
+        service.refreshToken({ refreshToken: 'invalid-refresh-token' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException when user is not found', async () => {
+      const payload = {
+        sub: 'non-existent-id',
+        username: 'testuser',
+        role: 'PURCHASER',
+      };
+
+      mockJwtService.verify.mockResolvedValue(payload);
+      mockUserService.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.refreshToken({ refreshToken: 'valid-refresh-token' }),
       ).rejects.toThrow(UnauthorizedException);
     });
   });
