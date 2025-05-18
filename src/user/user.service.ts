@@ -3,7 +3,8 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User } from '@prisma/client';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { User, Prisma } from '@prisma/client';
 
 @Injectable()
 export class UserService {
@@ -23,6 +24,18 @@ export class UserService {
 
     if (!user) {
       throw new Error('User not created');
+    }
+
+    return user;
+  }
+
+  async findByUsername(username: string): Promise<User> {
+    const user = await this.prisma.user.findUnique({
+      where: { username },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with username ${username} not found`);
     }
 
     return user;
