@@ -5,6 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { TokenBlacklistService } from './token-blacklist.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -12,6 +13,8 @@ describe('AuthService', () => {
   let userService: UserService;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let jwtService: JwtService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let tokenBlacklistService: TokenBlacklistService;
 
   const mockUser = {
     id: '1',
@@ -28,6 +31,12 @@ describe('AuthService', () => {
 
   const mockJwtService = {
     sign: jest.fn(),
+    decode: jest.fn(),
+  };
+
+  const mockTokenBlacklistService = {
+    addToBlacklist: jest.fn(),
+    isBlacklisted: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -42,12 +51,19 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: mockJwtService,
         },
+        {
+          provide: TokenBlacklistService,
+          useValue: mockTokenBlacklistService,
+        },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
     userService = module.get<UserService>(UserService);
     jwtService = module.get<JwtService>(JwtService);
+    tokenBlacklistService = module.get<TokenBlacklistService>(
+      TokenBlacklistService,
+    );
   });
 
   it('should be defined', () => {
@@ -111,6 +127,30 @@ describe('AuthService', () => {
           password: 'wrongpassword',
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('logout', () => {
+    it('should add token to blacklist', () => {
+      const token = 'valid-token';
+      service.logout(token);
+      expect(mockTokenBlacklistService.addToBlacklist).toHaveBeenCalledWith(
+        token,
+      );
+    });
+  });
+
+  describe('isTokenBlacklisted', () => {
+    it('should return true for blacklisted token', () => {
+      const token = 'blacklisted-token';
+      mockTokenBlacklistService.isBlacklisted.mockReturnValue(true);
+      expect(service.isTokenBlacklisted(token)).toBe(true);
+    });
+
+    it('should return false for non-blacklisted token', () => {
+      const token = 'valid-token';
+      mockTokenBlacklistService.isBlacklisted.mockReturnValue(false);
+      expect(service.isTokenBlacklisted(token)).toBe(false);
     });
   });
 });

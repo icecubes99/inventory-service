@@ -1,23 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { Role } from '@prisma/client';
+import { UnauthorizedException } from '@nestjs/common';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let authService: AuthService;
-
-  const mockUser = {
-    id: '1',
-    username: 'testuser',
-    name: 'Test User',
-    email: 'test@example.com',
-    role: Role.PURCHASER,
-  };
 
   const mockAuthService = {
     login: jest.fn(),
+    logout: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -32,7 +23,6 @@ describe('AuthController', () => {
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = module.get<AuthService>(AuthService);
   });
 
   it('should be defined', () => {
@@ -40,7 +30,7 @@ describe('AuthController', () => {
   });
 
   describe('login', () => {
-    it('should return access token and user data', async () => {
+    it('should return access token and user data when login is successful', async () => {
       const loginDto = {
         username: 'testuser',
         password: 'password',
@@ -48,7 +38,13 @@ describe('AuthController', () => {
 
       const expectedResponse = {
         access_token: 'test-token',
-        user: mockUser,
+        user: {
+          id: '1',
+          username: 'testuser',
+          name: 'Test User',
+          email: 'test@example.com',
+          role: 'PURCHASER',
+        },
       };
 
       mockAuthService.login.mockResolvedValue(expectedResponse);
@@ -57,6 +53,35 @@ describe('AuthController', () => {
 
       expect(result).toEqual(expectedResponse);
       expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+    });
+
+    it('should throw UnauthorizedException when login fails', async () => {
+      const loginDto = {
+        username: 'testuser',
+        password: 'wrongpassword',
+      };
+
+      mockAuthService.login.mockRejectedValue(
+        new UnauthorizedException('Invalid credentials'),
+      );
+
+      await expect(controller.login(loginDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+    });
+  });
+
+  describe('logout', () => {
+    it('should call authService.logout with the token', () => {
+      const token = 'test-token';
+      controller.logout(token);
+      expect(mockAuthService.logout).toHaveBeenCalledWith(token);
+    });
+
+    it('should throw UnauthorizedException when no token is provided', () => {
+      expect(() => controller.logout('')).toThrow(UnauthorizedException);
+      expect(() => controller.logout('')).toThrow('No token provided');
     });
   });
 });

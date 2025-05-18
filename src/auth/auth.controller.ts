@@ -1,7 +1,20 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Headers,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -39,5 +52,21 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'User logout' })
+  @ApiResponse({ status: 200, description: 'User successfully logged out' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  logout(@Headers('authorization') auth: string) {
+    if (!auth) {
+      throw new UnauthorizedException('No token provided');
+    }
+
+    const token = auth.replace('Bearer ', '');
+    this.authService.logout(token);
+    return { message: 'Successfully logged out' };
   }
 }
