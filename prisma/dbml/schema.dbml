@@ -1,0 +1,290 @@
+//// ------------------------------------------------------
+//// THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+//// ------------------------------------------------------
+
+Table User {
+  id String [pk]
+  username String [unique, not null]
+  passwordHash String [not null]
+  name String [not null]
+  email String [unique, not null]
+  role Role [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  requestedMrfs Mrf [not null]
+  approvedMrfs Mrf [not null]
+  approvedPvs PaymentVoucher [not null]
+}
+
+Table Location {
+  id String [pk]
+  name String [unique, not null]
+  type LocationType [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  MrfsFrom Mrf [not null]
+  DeliveriesTo DeliveryReceipt [not null]
+  DeliveriesFrom DeliveryReceipt [not null]
+  inventory InventoryItem [not null]
+}
+
+Table Item {
+  id String [pk]
+  code String [unique, not null]
+  description String [not null]
+  unitOfMeasurement String [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  mrfLineItems MrfLineItem [not null]
+  poLineItems PoLineItem [not null]
+  drLineItems DrLineItem [not null]
+  inventoryItems InventoryItem [not null]
+}
+
+Table Supplier {
+  id String [pk]
+  name String [unique, not null]
+  contactInfo String
+  paymentTerms String [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  purchaseOrders PurchaseOrder [not null]
+  invoices Invoice [not null]
+}
+
+Table Mrf {
+  id String [pk]
+  referenceNumber String [unique, not null]
+  fromLocationId String [not null]
+  fromLocation Location [not null]
+  dateRequested DateTime [default: `now()`, not null]
+  dateNeeded DateTime [not null]
+  status MrfStatus [not null, default: 'DRAFT']
+  classification MrfClassification [not null]
+  requestedById String [not null]
+  requestedBy User [not null]
+  approvedById String
+  approvedBy User
+  dateApproved DateTime
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  lineItems MrfLineItem [not null]
+}
+
+Table MrfLineItem {
+  id String [pk]
+  mrfId String [not null]
+  mrf Mrf [not null]
+  itemId String [not null]
+  item Item [not null]
+  requestedQuantity Float [not null]
+  approvedQuantity Float
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table PurchaseOrder {
+  id String [pk]
+  referenceNumber String [unique, not null]
+  supplierId String [not null]
+  supplier Supplier [not null]
+  dateCreated DateTime [default: `now()`, not null]
+  status PoStatus [not null, default: 'DRAFT']
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  lineItems PoLineItem [not null]
+  deliveryReceipts DeliveryReceipt [not null]
+}
+
+Table PoLineItem {
+  id String [pk]
+  purchaseOrderId String [not null]
+  purchaseOrder PurchaseOrder [not null]
+  itemId String [not null]
+  item Item [not null]
+  quantity Float [not null]
+  unitPrice Float [not null]
+  amount Float [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table DeliveryReceipt {
+  id String [pk]
+  referenceNumber String [unique, not null]
+  type DrType [not null]
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder
+  fromLocationId String
+  fromLocation Location
+  toLocationId String [not null]
+  toLocation Location [not null]
+  dateReceived DateTime [default: `now()`, not null]
+  status DrStatus [not null, default: 'RECEIVED']
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  lineItems DrLineItem [not null]
+}
+
+Table DrLineItem {
+  id String [pk]
+  deliveryReceiptId String [not null]
+  deliveryReceipt DeliveryReceipt [not null]
+  itemId String [not null]
+  item Item [not null]
+  quantity Float [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table Invoice {
+  id String [pk]
+  invoiceNumber String [not null]
+  supplierId String [not null]
+  supplier Supplier [not null]
+  dateIssued DateTime [not null]
+  dateReceived DateTime [default: `now()`, not null]
+  amount Float [not null]
+  status InvoiceStatus [not null, default: 'RECEIVED']
+  poReference String
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  paymentVouchers PaymentVoucher [not null]
+}
+
+Table PaymentVoucher {
+  id String [pk]
+  referenceNumber String [unique, not null]
+  dateCreated DateTime [default: `now()`, not null]
+  amount Float [not null]
+  status PvStatus [not null, default: 'DRAFT']
+  approvedById String
+  approvedBy User
+  dateApproved DateTime
+  paymentDate DateTime
+  paymentMethod String
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  invoices Invoice [not null]
+}
+
+Table InventoryItem {
+  id String [pk]
+  locationId String [not null]
+  location Location [not null]
+  itemId String [not null]
+  item Item [not null]
+  quantity Float [not null, default: 0]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+
+  indexes {
+    (locationId, itemId) [unique]
+  }
+}
+
+Table ApprovedBy {
+  approvedmrfsId String [ref: > Mrf.id]
+  approvedpvsId String [ref: > PaymentVoucher.id]
+}
+
+Table InvoiceToPaymentVoucher {
+  paymentvouchersId String [ref: > PaymentVoucher.id]
+  invoicesId String [ref: > Invoice.id]
+}
+
+Enum Role {
+  ADMIN
+  PURCHASER
+  INVENTORY_MASTER
+  ACCOUNTING
+  FOREMAN
+  WAREHOUSE_MANAGER
+}
+
+Enum LocationType {
+  WAREHOUSE
+  SITE
+}
+
+Enum MrfClassification {
+  BORROW
+  CONSUME
+}
+
+Enum MrfStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
+Enum PoStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  FULLY_RECEIVED
+  CANCELLED
+}
+
+Enum DrType {
+  SUPPLIER
+  INTERNAL
+}
+
+Enum DrStatus {
+  DRAFT
+  RECEIVED
+  PROCESSED
+}
+
+Enum InvoiceStatus {
+  RECEIVED
+  PROCESSED
+  APPROVED_FOR_PAYMENT
+  PAID
+  CANCELLED
+}
+
+Enum PvStatus {
+  DRAFT
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+Ref: Mrf.fromLocationId > Location.id
+
+Ref: Mrf.requestedById > User.id
+
+Ref: Mrf.approvedById > User.id
+
+Ref: MrfLineItem.mrfId > Mrf.id [delete: Cascade]
+
+Ref: MrfLineItem.itemId > Item.id
+
+Ref: PurchaseOrder.supplierId > Supplier.id
+
+Ref: PoLineItem.purchaseOrderId > PurchaseOrder.id [delete: Cascade]
+
+Ref: PoLineItem.itemId > Item.id
+
+Ref: DeliveryReceipt.purchaseOrderId > PurchaseOrder.id
+
+Ref: DeliveryReceipt.fromLocationId > Location.id
+
+Ref: DeliveryReceipt.toLocationId > Location.id
+
+Ref: DrLineItem.deliveryReceiptId > DeliveryReceipt.id [delete: Cascade]
+
+Ref: DrLineItem.itemId > Item.id
+
+Ref: Invoice.supplierId > Supplier.id
+
+Ref: PaymentVoucher.approvedById > User.id
+
+Ref: InventoryItem.locationId > Location.id
+
+Ref: InventoryItem.itemId > Item.id
