@@ -9,23 +9,34 @@ Table User {
   name String [not null]
   email String [unique, not null]
   role Role [not null]
+  status UserStatus [not null, default: 'ACTIVE']
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   requestedMrfs Mrf [not null]
   approvedMrfs Mrf [not null]
   approvedPvs PaymentVoucher [not null]
+  locationId String
+  location Location
+  managedLocations Location [not null]
+  managedSuppliers Supplier [not null]
+  deletedAt DateTime
 }
 
 Table Location {
   id String [pk]
   name String [unique, not null]
   type LocationType [not null]
+  status LocationStatus [not null, default: 'ACTIVE']
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   MrfsFrom Mrf [not null]
   DeliveriesTo DeliveryReceipt [not null]
   DeliveriesFrom DeliveryReceipt [not null]
   inventory InventoryItem [not null]
+  assignedUsers User [not null]
+  managerId String
+  manager User
+  deletedAt DateTime
 }
 
 Table Item {
@@ -33,12 +44,14 @@ Table Item {
   code String [unique, not null]
   description String [not null]
   unitOfMeasurement String [not null]
+  status ItemStatus [not null, default: 'ACTIVE']
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   mrfLineItems MrfLineItem [not null]
   poLineItems PoLineItem [not null]
   drLineItems DrLineItem [not null]
   inventoryItems InventoryItem [not null]
+  deletedAt DateTime
 }
 
 Table Supplier {
@@ -46,10 +59,14 @@ Table Supplier {
   name String [unique, not null]
   contactInfo String
   paymentTerms String [not null]
+  status SupplierStatus [not null, default: 'ACTIVE']
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   purchaseOrders PurchaseOrder [not null]
   invoices Invoice [not null]
+  internalManagerId String
+  internalManager User
+  deletedAt DateTime
 }
 
 Table Mrf {
@@ -69,6 +86,7 @@ Table Mrf {
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   lineItems MrfLineItem [not null]
+  deletedAt DateTime
 }
 
 Table MrfLineItem {
@@ -81,6 +99,7 @@ Table MrfLineItem {
   approvedQuantity Float
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
+  deletedAt DateTime
 }
 
 Table PurchaseOrder {
@@ -94,6 +113,7 @@ Table PurchaseOrder {
   updatedAt DateTime [not null]
   lineItems PoLineItem [not null]
   deliveryReceipts DeliveryReceipt [not null]
+  deletedAt DateTime
 }
 
 Table PoLineItem {
@@ -107,6 +127,7 @@ Table PoLineItem {
   amount Float [not null]
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
+  deletedAt DateTime
 }
 
 Table DeliveryReceipt {
@@ -124,6 +145,7 @@ Table DeliveryReceipt {
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   lineItems DrLineItem [not null]
+  deletedAt DateTime
 }
 
 Table DrLineItem {
@@ -135,6 +157,7 @@ Table DrLineItem {
   quantity Float [not null]
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
+  deletedAt DateTime
 }
 
 Table Invoice {
@@ -150,6 +173,7 @@ Table Invoice {
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   paymentVouchers PaymentVoucher [not null]
+  deletedAt DateTime
 }
 
 Table PaymentVoucher {
@@ -166,6 +190,7 @@ Table PaymentVoucher {
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
   invoices Invoice [not null]
+  deletedAt DateTime
 }
 
 Table InventoryItem {
@@ -177,6 +202,7 @@ Table InventoryItem {
   quantity Float [not null, default: 0]
   createdAt DateTime [default: `now()`, not null]
   updatedAt DateTime [not null]
+  deletedAt DateTime
 
   indexes {
     (locationId, itemId) [unique]
@@ -254,6 +280,39 @@ Enum PvStatus {
   PAID
   CANCELLED
 }
+
+Enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  LOCKED
+}
+
+Enum LocationStatus {
+  ACTIVE
+  INACTIVE
+  UNDER_MAINTENANCE
+}
+
+Enum ItemStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+  OBSOLETE
+}
+
+Enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+  ON_HOLD
+  PROSPECT
+}
+
+Ref: User.locationId > Location.id
+
+Ref: Location.managerId - User.id
+
+Ref: Supplier.internalManagerId > User.id
 
 Ref: Mrf.fromLocationId > Location.id
 
