@@ -100,6 +100,8 @@ model User {
   location      Location? @relation("UserAssignedLocation", fields: [locationId], references: [id])
 
   managedLocations Location[] @relation("LocationManager") // A manager can manage multiple locations
+
+  deletedAt DateTime? // Soft delete
 }
 
 model Location {
@@ -123,6 +125,7 @@ model Location {
   managerId    String? // Foreign key to the User who is the manager (Optional)
   manager      User?    @relation("LocationManager", fields: [managerId], references: [id]) // The user who is the manager of this location
 
+  deletedAt DateTime? // Soft delete
 }
 
 model Item {
@@ -138,6 +141,8 @@ model Item {
   poLineItems     PoLineItem[]
   drLineItems     DrLineItem[]
   inventoryItems  InventoryItem[]
+
+  deletedAt DateTime? // Soft delete
 }
 
 model Supplier {
@@ -151,6 +156,8 @@ model Supplier {
   // Relations
   purchaseOrders PurchaseOrder[]
   invoices       Invoice[]
+
+  deletedAt DateTime? // Soft delete
 }
 
 // --- Documents ---
@@ -184,6 +191,8 @@ model Mrf {
 
   // Relation: Link to the Delivery Receipt that fulfilled this MRF (Optional: 1:1 or 1:Many if partially fulfilled)
   // fulfilledByDr    DeliveryReceipt? @relation("MrfFulfilledBy") // Simple 1:1 assumption for now
+
+  deletedAt DateTime? // Soft delete
 }
 
 model MrfLineItem {
@@ -199,6 +208,8 @@ model MrfLineItem {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  deletedAt DateTime? // Soft delete
 }
 
 
@@ -224,6 +235,8 @@ model PurchaseOrder {
 
   // Delivery Receipts linked to this PO (partial deliveries possible)
   deliveryReceipts DeliveryReceipt[]
+
+  deletedAt DateTime? // Soft delete
 }
 
 model PoLineItem {
@@ -240,6 +253,8 @@ model PoLineItem {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  deletedAt DateTime? // Soft delete
 }
 
 // Delivery Receipt (DR) - For Supplier Deliveries AND Internal Transfers
@@ -271,6 +286,8 @@ model DeliveryReceipt {
 
   // Line items for the materials received
   lineItems        DrLineItem[]
+
+  deletedAt DateTime? // Soft delete
 }
 
 model DrLineItem {
@@ -285,6 +302,8 @@ model DrLineItem {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  deletedAt DateTime? // Soft delete
 }
 
 // Invoice - Received from Suppliers
@@ -313,6 +332,8 @@ model Invoice {
 
   // Relation to Payment Vouchers (Many Invoices can be paid by One PV)
   paymentVouchers  PaymentVoucher[] // Indirect relation via _InvoiceToPaymentVoucher
+
+  deletedAt DateTime? // Soft delete
 }
 
 // Payment Voucher (PV) - Created by Accounting, Approved by C. Warehouse Manager
@@ -337,6 +358,8 @@ model PaymentVoucher {
 
   // Relation to Invoices (One PV can pay for Many Invoices)
   invoices         Invoice[] // Indirect relation via _InvoiceToPaymentVoucher
+
+  deletedAt DateTime? // Soft delete
 }
 
 // Linking table for Many-to-Many between Invoice and PaymentVoucher
@@ -364,6 +387,8 @@ model InventoryItem {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  deletedAt DateTime? // Soft delete
 
   // Ensure only one entry per item per location
   @@unique([locationId, itemId])
