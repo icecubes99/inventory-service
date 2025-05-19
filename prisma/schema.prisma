@@ -94,6 +94,12 @@ model User {
   approvedMrfs  Mrf[] @relation("ApprovedBy")
   approvedPvs   PaymentVoucher[] @relation("ApprovedBy")
   // Add relations for documents created by this user if needed (e.g., createdPos)
+
+  // Location the user is assigned to (optional if some users aren't tied to one location)
+  locationId    String? // Foreign key to the Location the user is assigned to (optional if some users aren't tied to one location)
+  location      Location? @relation("UserAssignedLocation", fields: [locationId], references: [id])
+
+  managedLocations Location[] @relation("LocationManager") // A manager can manage multiple locations
 }
 
 model Location {
@@ -110,6 +116,13 @@ model Location {
 
   // Inventory at this location
   inventory     InventoryItem[]
+
+  // User assigned to this location
+  assignedUsers User[] @relation("UserAssignedLocation") // List of users assigned to this location
+
+  managerId    String? // Foreign key to the User who is the manager (Optional)
+  manager      User?    @relation("LocationManager", fields: [managerId], references: [id]) // The user who is the manager of this location
+
 }
 
 model Item {
