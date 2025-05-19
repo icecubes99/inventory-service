@@ -128,6 +128,7 @@ model User {
   location      Location? @relation("UserAssignedLocation", fields: [locationId], references: [id])
 
   managedLocations Location[] @relation("LocationManager") // A manager can manage multiple locations
+  managedSuppliers Supplier[] @relation("ManagedSuppliers") // List of suppliers this user manages internally
 
   deletedAt DateTime? // Soft delete
 }
@@ -187,6 +188,9 @@ model Supplier {
   // Relations
   purchaseOrders PurchaseOrder[]
   invoices       Invoice[]
+
+  internalManagerId String? // Foreign key to the User who manages this supplier relationship
+  internalManager   User?   @relation("ManagedSuppliers", fields: [internalManagerId], references: [id]) // The user responsible internally
 
   deletedAt DateTime? // Soft delete
 }
