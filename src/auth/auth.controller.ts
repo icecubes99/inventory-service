@@ -5,6 +5,9 @@ import {
   Headers,
   UnauthorizedException,
   UseGuards,
+  Get,
+  Res,
+  Req,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -16,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { Response, Request } from 'express';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -30,14 +34,6 @@ export class AuthController {
     schema: {
       type: 'object',
       properties: {
-        access_token: {
-          type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        },
-        refresh_token: {
-          type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        },
         user: {
           type: 'object',
           properties: {
@@ -55,8 +51,54 @@ export class AuthController {
     },
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { access_token, refresh_token, user } =
+      await this.authService.login(loginDto);
+
+    // Set access token cookie
+    res.cookie('access_token', access_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    // Set refresh token cookie
+    res.cookie('refresh_token', refresh_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    return { user };
+  }
+
+  @Get('session')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get current session user' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns current authenticated user data',
+    // Schema would match the user object structure returned by authService.getUserDetailsForSession
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getSession(@Req() request: Request) {
+    const userFromJwt = request.user as {
+      id: string;
+      username: string;
+      role: string;
+    };
+    if (!userFromJwt || !userFromJwt.id) {
+      // This should ideally be caught by JwtAuthGuard if no valid user context is established
+      throw new UnauthorizedException(
+        'Authentication details not found in request.',
+      );
+    }
+    return await this.authService.getUserDetailsForSession(userFromJwt.id);
   }
 
   @Post('refresh')
@@ -64,23 +106,32 @@ export class AuthController {
   @ApiResponse({
     status: 200,
     description: 'Token successfully refreshed',
-    schema: {
-      type: 'object',
-      properties: {
-        access_token: {
-          type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        },
-        refresh_token: {
-          type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        },
-      },
-    },
   })
   @ApiResponse({ status: 401, description: 'Invalid refresh token' })
-  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
-    return this.authService.refreshToken(refreshTokenDto);
+  async refreshToken(
+    @Body() refreshTokenDto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { access_token, refresh_token } =
+      await this.authService.refreshToken(refreshTokenDto);
+
+    // Set new access token cookie
+    res.cookie('access_token', access_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+
+    // Set new refresh token cookie
+    res.cookie('refresh_token', refresh_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    return { message: 'Tokens refreshed successfully' };
   }
 
   @Post('logout')
@@ -89,13 +140,21 @@ export class AuthController {
   @ApiOperation({ summary: 'User logout' })
   @ApiResponse({ status: 200, description: 'User successfully logged out' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  logout(@Headers('authorization') auth: string) {
+  logout(
+    @Headers('authorization') auth: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     if (!auth) {
       throw new UnauthorizedException('No token provided');
     }
 
     const token = auth.replace('Bearer ', '');
     this.authService.logout(token);
+
+    // Clear cookies
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+
     return { message: 'Successfully logged out' };
   }
 }

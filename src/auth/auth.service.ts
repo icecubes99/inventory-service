@@ -86,6 +86,41 @@ export class AuthService {
     }
   }
 
+  async getSession(token: string) {
+    try {
+      const payload = await this.jwtService.verify(token);
+      const user = await this.userService.findOne(payload.sub);
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      return {
+        user: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+      };
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+  }
+
+  async getUserDetailsForSession(userId: string) {
+    const user = await this.userService.findOne(userId);
+    if (!user) {
+      // This case should be rare if JWT validation passed and sub (userId) was valid
+      throw new UnauthorizedException('User not found for session.');
+    }
+    // Return a DTO or a cleaned-up user object, excluding sensitive info like passwordHash
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash, ...userDetails } = user;
+    return { user: userDetails };
+  }
+
   logout(token: string): void {
     this.tokenBlacklistService.addToBlacklist(token);
   }
