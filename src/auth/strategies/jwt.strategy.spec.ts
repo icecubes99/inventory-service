@@ -4,21 +4,25 @@ import { JwtStrategy } from './jwt.strategy';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth.service';
 import { UnauthorizedException } from '@nestjs/common';
+import { Request } from 'express';
 
 describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
-  let configService: ConfigService;
-  let authService: AuthService;
-
-  const mockConfigService = {
-    get: jest.fn().mockReturnValue('dummy-secret-key'),
+  let mockConfigService: {
+    get: jest.Mock;
   };
-
-  const mockAuthService = {
-    isTokenBlacklisted: jest.fn(),
+  let mockAuthService: {
+    isTokenBlacklisted: jest.Mock;
   };
 
   beforeEach(async () => {
+    mockConfigService = {
+      get: jest.fn().mockReturnValue('dummy-secret-key'),
+    };
+    mockAuthService = {
+      isTokenBlacklisted: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JwtStrategy,
@@ -34,8 +38,6 @@ describe('JwtStrategy', () => {
     }).compile();
 
     strategy = module.get<JwtStrategy>(JwtStrategy);
-    configService = module.get<ConfigService>(ConfigService);
-    authService = module.get<AuthService>(AuthService);
   });
 
   it('should be defined', () => {
@@ -43,65 +45,119 @@ describe('JwtStrategy', () => {
   });
 
   describe('validate', () => {
-    it('should return user object from payload when token is valid', () => {
-      const request = {
+    const payload = {
+      sub: '1',
+      username: 'testuser',
+      role: 'PURCHASER',
+    };
+
+    it('should return user object from payload when token is in Authorization header and valid', () => {
+      const mockRequest = {
         headers: {
-          authorization: 'Bearer valid-token',
+          authorization: 'Bearer valid-token-header',
         },
-      };
-      const payload = {
-        sub: '1',
-        username: 'testuser',
-        role: 'PURCHASER',
-      };
+        cookies: {},
+      } as unknown as Request;
 
       mockAuthService.isTokenBlacklisted.mockReturnValue(false);
-
-      const result = strategy.validate(request, payload);
-
+      const result = strategy.validate(mockRequest, payload);
       expect(result).toEqual({
         id: payload.sub,
         username: payload.username,
         role: payload.role,
       });
+      expect(mockAuthService.isTokenBlacklisted).toHaveBeenCalledWith(
+        'valid-token-header',
+      );
     });
 
-    it('should throw UnauthorizedException when token is blacklisted', () => {
-      const request = {
-        headers: {
-          authorization: 'Bearer blacklisted-token',
+    it('should return user object from payload when token is in cookie and valid', () => {
+      const mockRequest = {
+        headers: {},
+        cookies: {
+          access_token: 'valid-token-cookie',
         },
-      };
-      const payload = {
-        sub: '1',
-        username: 'testuser',
-        role: 'PURCHASER',
-      };
+      } as unknown as Request;
 
+      mockAuthService.isTokenBlacklisted.mockReturnValue(false);
+      const result = strategy.validate(mockRequest, payload);
+      expect(result).toEqual({
+        id: payload.sub,
+        username: payload.username,
+        role: payload.role,
+      });
+      expect(mockAuthService.isTokenBlacklisted).toHaveBeenCalledWith(
+        'valid-token-cookie',
+      );
+    });
+
+    it('should prioritize Authorization header token if both header and cookie token exist', () => {
+      const mockRequest = {
+        headers: {
+          authorization: 'Bearer header-token-priority',
+        },
+        cookies: {
+          access_token: 'cookie-token-ignored',
+        },
+      } as unknown as Request;
+
+      mockAuthService.isTokenBlacklisted.mockReturnValue(false);
+      strategy.validate(mockRequest, payload);
+      expect(mockAuthService.isTokenBlacklisted).toHaveBeenCalledWith(
+        'header-token-priority',
+      );
+    });
+
+    it('should throw UnauthorizedException when token is blacklisted (from header)', () => {
+      const mockRequest = {
+        headers: {
+          authorization: 'Bearer blacklisted-header-token',
+        },
+        cookies: {},
+      } as unknown as Request;
       mockAuthService.isTokenBlacklisted.mockReturnValue(true);
 
-      expect(() => strategy.validate(request, payload)).toThrow(
+      expect(() => strategy.validate(mockRequest, payload)).toThrow(
         UnauthorizedException,
       );
-      expect(() => strategy.validate(request, payload)).toThrow(
+      expect(() => strategy.validate(mockRequest, payload)).toThrow(
         'Token has been invalidated',
+      );
+      expect(mockAuthService.isTokenBlacklisted).toHaveBeenCalledWith(
+        'blacklisted-header-token',
       );
     });
 
-    it('should throw UnauthorizedException when no token is provided', () => {
-      const request = {
+    it('should throw UnauthorizedException when token is blacklisted (from cookie)', () => {
+      const mockRequest = {
         headers: {},
-      };
-      const payload = {
-        sub: '1',
-        username: 'testuser',
-        role: 'PURCHASER',
-      };
+        cookies: {
+          access_token: 'blacklisted-cookie-token',
+        },
+      } as unknown as Request;
+      mockAuthService.isTokenBlacklisted.mockReturnValue(true);
 
-      expect(() => strategy.validate(request, payload)).toThrow(
+      expect(() => strategy.validate(mockRequest, payload)).toThrow(
         UnauthorizedException,
       );
-      expect(() => strategy.validate(request, payload)).toThrow(
+      expect(() => strategy.validate(mockRequest, payload)).toThrow(
+        'Token has been invalidated',
+      );
+      expect(mockAuthService.isTokenBlacklisted).toHaveBeenCalledWith(
+        'blacklisted-cookie-token',
+      );
+    });
+
+    it('should throw UnauthorizedException when no token is provided in header or cookie', () => {
+      const mockRequest = {
+        headers: {},
+        cookies: {},
+      } as unknown as Request;
+
+      expect(() => strategy.validate(mockRequest, payload)).toThrow(
+        UnauthorizedException,
+      );
+      expect(() => strategy.validate(mockRequest, payload)).toThrow(
         'No token provided',
       );
     });

@@ -8,6 +8,8 @@ import { UserModule } from '../user/user.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TokenBlacklistService } from './token-blacklist.service';
 import * as cookieParser from 'cookie-parser';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -21,8 +23,22 @@ import * as cookieParser from 'cookie-parser';
       }),
       inject: [ConfigService],
     }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 10,
+      },
+    ]),
   ],
-  providers: [AuthService, JwtStrategy, TokenBlacklistService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    TokenBlacklistService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
   controllers: [AuthController],
   exports: [AuthService],
 })
