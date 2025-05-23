@@ -141,15 +141,26 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User successfully logged out' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   logout(
-    @Headers('authorization') auth: string,
+    // Consider making it async if authService.logout could be
+    @Req() request: Request, // <<<< INJECT the Request object
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (!auth) {
-      throw new UnauthorizedException('No token provided');
-    }
+    // The JwtAuthGuard has already validated the access_token cookie.
+    // We can retrieve it from the request cookies to pass to the blacklist service.
+    const accessToken = request.cookies['access_token'];
 
-    const token = auth.replace('Bearer ', '');
-    this.authService.logout(token);
+    if (accessToken) {
+      this.authService.logout(accessToken); // Call blacklist service
+    } else {
+      // This case should ideally not be reached if JwtAuthGuard is effective
+      // and requires an access token. However, as a fallback or if the guard
+      // configuration changes, you might log a warning.
+      console.warn(
+        'Logout called but access_token cookie was missing after JwtAuthGuard.',
+      );
+      // Depending on strictness, you could choose to throw UnauthorizedException here too,
+      // but if the primary goal is cookie clearing, that will still proceed.
+    }
 
     // Clear cookies
     res.clearCookie('access_token');
