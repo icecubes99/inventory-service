@@ -225,24 +225,39 @@ describe('AuthController', () => {
   });
 
   describe('logout', () => {
-    it('should call authService.logout and clear cookies', () => {
-      const token = 'test-token';
-      const authHeader = `Bearer ${token}`;
+    it('should call authService.logout and clear cookies when access_token is present', () => {
+      const mockRequest = {
+        cookies: { access_token: 'test-access-token' },
+      } as unknown as Request;
 
-      controller.logout(authHeader, mockResponse as Response);
+      controller.logout(mockRequest, mockResponse as Response);
 
-      expect(mockAuthService.logout).toHaveBeenCalledWith(token);
+      expect(mockAuthService.logout).toHaveBeenCalledWith('test-access-token');
       expect(mockResponse.clearCookie).toHaveBeenCalledWith('access_token');
       expect(mockResponse.clearCookie).toHaveBeenCalledWith('refresh_token');
     });
 
-    it('should throw UnauthorizedException when no token is provided', () => {
-      expect(() => controller.logout('', mockResponse as Response)).toThrow(
-        UnauthorizedException,
-      );
-      expect(() => controller.logout('', mockResponse as Response)).toThrow(
-        'No token provided',
-      );
+    it('should not call authService.logout but still clear cookies if access_token cookie is missing', () => {
+      const mockRequest = {
+        cookies: {}, // No access_token
+      } as unknown as Request;
+
+      controller.logout(mockRequest, mockResponse as Response);
+
+      expect(mockAuthService.logout).not.toHaveBeenCalled();
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith('access_token');
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith('refresh_token');
+      // The controller currently logs a warning in this case, which could be asserted if a logger mock was injected
     });
+
+    // JwtAuthGuard should prevent access if no token is present at all for a protected route.
+    // The controller's logic for a missing token within the method itself handles a scenario
+    // where the guard might have passed the request for other reasons or if the guard is not applied.
+    // Given the current controller logic, if there's no 'access_token' cookie, it simply doesn't call
+    // the logout service for the token but proceeds to clear cookies.
+    // An explicit test for throwing UnauthorizedException if NO user context is established
+    // would be more relevant at the guard level or if the controller method itself
+    // had stricter checks before proceeding. The current controller logout does not throw
+    // an exception if the access_token cookie is merely missing; it attempts to clear cookies regardless.
   });
 });

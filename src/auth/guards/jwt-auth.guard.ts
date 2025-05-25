@@ -10,7 +10,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const token = this.extractTokenFromHeader(request);
+    let token = this.extractTokenFromHeader(request);
+    if (!token) {
+      token = this.extractTokenFromCookie(request);
+    }
 
     if (token && this.authService.isTokenBlacklisted(token)) {
       return false;
@@ -20,7 +23,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   private extractTokenFromHeader(request: any): string | undefined {
-    const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    return type === 'Bearer' ? token : undefined;
+    const [type, tokenValue] = request.headers.authorization?.split(' ') ?? [];
+    return type === 'Bearer' ? tokenValue : undefined;
+  }
+
+  private extractTokenFromCookie(request: any): string | undefined {
+    return request.cookies?.access_token;
   }
 }
