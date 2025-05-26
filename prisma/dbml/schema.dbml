@@ -226,6 +226,7 @@ Enum Role {
   ACCOUNTING
   FOREMAN
   WAREHOUSE_MANAGER
+  SITE_MANAGER
 }
 
 Enum LocationType {
