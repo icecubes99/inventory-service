@@ -9,7 +9,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TokenBlacklistService } from './token-blacklist.service';
 import * as cookieParser from 'cookie-parser';
 // import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { PrismaModule } from 'src/prisma/prisma.module';
+import { PermissionsService } from './permissions.service';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { APP_GUARD } from '@nestjs/core';
       }),
       inject: [ConfigService],
     }),
+    PrismaModule,
     // TODO: Uncomment this when we have a need to throttle requests
     // ThrottlerModule.forRoot([
     //   {
@@ -39,9 +41,15 @@ import { APP_GUARD } from '@nestjs/core';
     //   provide: APP_GUARD,
     //   // useClass: ThrottlerGuard,
     // },
+    PermissionsService,
   ],
   controllers: [AuthController],
-  exports: [AuthService],
+  exports: [
+    AuthService,
+    TokenBlacklistService,
+    PermissionsService,
+    // ... other exports like JwtModule ...
+  ],
 })
 export class AuthModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

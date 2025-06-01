@@ -1,16 +1,46 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { Location, LocationType, LocationStatus } from '@prisma/client';
 import { handlePrismaError } from '../common/utils/prisma-error-handler';
+import { PermissionsService } from '../auth/permissions.service';
 
 @Injectable()
 export class LocationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
-  async create(createLocationDto: CreateLocationDto): Promise<Location> {
+  async create(
+    createLocationDto: CreateLocationDto,
+    actorUserId: string,
+  ): Promise<Location> {
     try {
+      const canCreate =
+        await this.permissionsService.canCreateLocation(actorUserId);
+      if (!canCreate) {
+        throw new ForbiddenException(
+          'You do not have permission to create locations.',
+        );
+      }
+
+      if (createLocationDto.managerId) {
+        const managerExists = await this.prisma.user.findUnique({
+          where: { id: createLocationDto.managerId },
+        });
+        if (!managerExists) {
+          throw new NotFoundException(
+            `User with ID ${createLocationDto.managerId} (to be manager) not found.`,
+          );
+        }
+      }
+
       return this.prisma.location.create({
         data: {
           name: createLocationDto.name,
@@ -25,6 +55,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -46,6 +77,12 @@ export class LocationsService {
         },
       });
     } catch (error) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
       handlePrismaError(error);
     }
   }
@@ -63,6 +100,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -105,6 +143,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -143,6 +182,9 @@ export class LocationsService {
 
       return location;
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       handlePrismaError(error);
     }
   }
@@ -161,6 +203,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -203,6 +246,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -234,10 +278,31 @@ export class LocationsService {
   async update(
     id: string,
     updateLocationDto: UpdateLocationDto,
+    actorUserId: string,
   ): Promise<Location> {
     try {
-      // Check if location exists
-      await this.findOne(id); // This already throws NotFoundException if not found, and is handled by its own try/catch
+      const canManage = await this.permissionsService.canManageLocation(
+        actorUserId,
+        id,
+      );
+      if (!canManage) {
+        throw new ForbiddenException(
+          'You do not have permission to manage this location.',
+        );
+      }
+
+      await this.findOne(id);
+
+      if (updateLocationDto.managerId) {
+        const managerExists = await this.prisma.user.findUnique({
+          where: { id: updateLocationDto.managerId },
+        });
+        if (!managerExists) {
+          throw new NotFoundException(
+            `User with ID ${updateLocationDto.managerId} (to be manager) not found.`,
+          );
+        }
+      }
 
       return this.prisma.location.update({
         where: { id },
@@ -254,6 +319,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -275,16 +341,29 @@ export class LocationsService {
         },
       });
     } catch (error) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
       handlePrismaError(error);
     }
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, actorUserId: string): Promise<void> {
     try {
-      // Check if location exists
-      await this.findOne(id); // This already throws NotFoundException if not found, and is handled by its own try/catch
+      const canManage = await this.permissionsService.canManageLocation(
+        actorUserId,
+        id,
+      );
+      if (!canManage) {
+        throw new ForbiddenException(
+          'You do not have permission to manage this location.',
+        );
+      }
+      await this.findOne(id);
 
-      // Soft delete
       await this.prisma.location.update({
         where: { id },
         data: {
@@ -292,22 +371,42 @@ export class LocationsService {
         },
       });
     } catch (error) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
       handlePrismaError(error);
     }
   }
 
-  async assignUser(locationId: string, userId: string): Promise<Location> {
+  async assignUser(
+    locationId: string,
+    userId: string,
+    actorUserId: string,
+  ): Promise<Location> {
     try {
-      // Check if location exists
-      await this.findOne(locationId); // This already throws NotFoundException if not found, and is handled by its own try/catch
+      const canManage = await this.permissionsService.canManageLocation(
+        actorUserId,
+        locationId,
+      );
+      if (!canManage) {
+        throw new ForbiddenException(
+          'You do not have permission to manage this location.',
+        );
+      }
 
-      // Check if user exists
-      const user = await this.prisma.user.findUnique({
+      await this.findOne(locationId);
+
+      const userToAssign = await this.prisma.user.findUnique({
         where: { id: userId },
       });
 
-      if (!user) {
-        throw new NotFoundException(`User with ID ${userId} not found`);
+      if (!userToAssign) {
+        throw new NotFoundException(
+          `User with ID ${userId} to assign not found`,
+        );
       }
 
       return this.prisma.location.update({
@@ -324,6 +423,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -345,14 +445,53 @@ export class LocationsService {
         },
       });
     } catch (error) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
       handlePrismaError(error);
     }
   }
 
-  async unassignUser(locationId: string, userId: string): Promise<Location> {
+  async unassignUser(
+    locationId: string,
+    userId: string,
+    actorUserId: string,
+  ): Promise<Location> {
     try {
-      // Check if location exists
-      await this.findOne(locationId); // This already throws NotFoundException if not found, and is handled by its own try/catch
+      const canManage = await this.permissionsService.canManageLocation(
+        actorUserId,
+        locationId,
+      );
+      if (!canManage) {
+        throw new ForbiddenException(
+          'You do not have permission to manage this location.',
+        );
+      }
+
+      await this.findOne(locationId);
+
+      const userToUnassign = await this.prisma.user.findFirst({
+        where: {
+          id: userId,
+          locationId: locationId,
+        },
+      });
+
+      if (!userToUnassign) {
+        const generalUserCheck = await this.prisma.user.findUnique({
+          where: { id: userId },
+        });
+        if (!generalUserCheck)
+          throw new NotFoundException(
+            `User with ID ${userId} to unassign not found at all.`,
+          );
+        throw new NotFoundException(
+          `User with ID ${userId} is not assigned to location ${locationId}.`,
+        );
+      }
 
       return this.prisma.location.update({
         where: { id: locationId },
@@ -368,6 +507,7 @@ export class LocationsService {
               name: true,
               username: true,
               email: true,
+              role: true,
             },
           },
           assignedUsers: {
@@ -389,6 +529,12 @@ export class LocationsService {
         },
       });
     } catch (error) {
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
       handlePrismaError(error);
     }
   }

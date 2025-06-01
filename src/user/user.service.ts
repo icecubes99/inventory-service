@@ -1,14 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User } from '@prisma/client'; // Prisma import removed as it's handled globally
+import { User, Location, Role, Prisma } from '@prisma/client';
 import { handlePrismaError } from '../common/utils/prisma-error-handler';
+import { PermissionsService } from '../auth/permissions.service';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     const { password, ...rest } = createUserDto;
@@ -45,6 +53,7 @@ export class UserService {
 
       return user;
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       handlePrismaError(error);
     }
   }
@@ -69,23 +78,70 @@ export class UserService {
 
       return user;
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       handlePrismaError(error);
     }
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+  async getUserWithManagedLocations(
+    userId: string,
+  ): Promise<User & { managedLocations: Location[] }> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          managedLocations: {
+            where: { deletedAt: null },
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found`);
+      }
+
+      return user as User & { managedLocations: Location[] };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      handlePrismaError(error);
+    }
+  }
+
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    actorUserId?: string,
+  ): Promise<User> {
+    if (updateUserDto.role && actorUserId) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: actorUserId },
+      });
+      if (actor?.role !== Role.ADMIN) {
+        throw new ForbiddenException('Only ADMIN can change user roles.');
+      }
+    }
+
     try {
       await this.findOne(id);
 
-      const updateData: any = { ...updateUserDto };
+      const { password, ...otherUpdateData } = updateUserDto;
+      const updateData: Prisma.UserUpdateInput = { ...otherUpdateData };
 
-      if (updateUserDto.password) {
+      if (password) {
         const salt = await bcrypt.genSalt();
-        updateData.passwordHash = await bcrypt.hash(
-          updateUserDto.password,
-          salt,
-        );
-        delete updateData.password;
+        updateData.passwordHash = await bcrypt.hash(password, salt);
+      }
+
+      if (updateUserDto.role) {
+        updateData.role = updateUserDto.role;
+      } else {
+        delete updateData.role;
       }
 
       return await this.prisma.user.update({
@@ -93,17 +149,144 @@ export class UserService {
         data: updateData,
       });
     } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      )
+        throw error;
       handlePrismaError(error);
     }
   }
 
-  async remove(id: string): Promise<User> {
+  async remove(id: string, actorUserId: string): Promise<User> {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+    });
+    if (actor?.role !== Role.ADMIN && id !== actorUserId) {
+      throw new ForbiddenException(
+        'You do not have permission to delete this user.',
+      );
+    }
     try {
-      await this.findOne(id);
+      const userToDelete = await this.findOne(id);
+      const managedLocationsCount = await this.prisma.location.count({
+        where: { managerId: id, deletedAt: null },
+      });
+      if (managedLocationsCount > 0) {
+        throw new ForbiddenException(
+          `User ${userToDelete.name} cannot be deleted as they manage ${managedLocationsCount} active location(s). Reassign managers first.`,
+        );
+      }
+
       return await this.prisma.user.delete({
         where: { id },
       });
     } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      )
+        throw error;
+      handlePrismaError(error);
+    }
+  }
+
+  async assignManagerToLocation(
+    locationId: string,
+    managerUserId: string,
+    actorUserId: string,
+  ): Promise<Location> {
+    try {
+      const canActorManageLocation =
+        await this.permissionsService.canManageLocation(
+          actorUserId,
+          locationId,
+        );
+      const actorIsAdmin =
+        (await this.prisma.user.findUnique({ where: { id: actorUserId } }))
+          ?.role === Role.ADMIN;
+
+      if (!canActorManageLocation && !actorIsAdmin) {
+        throw new ForbiddenException(
+          'You do not have permission to assign a manager to this location.',
+        );
+      }
+
+      const location = await this.prisma.location.findUnique({
+        where: { id: locationId, deletedAt: null },
+      });
+      if (!location) {
+        throw new NotFoundException(
+          `Location with ID ${locationId} not found or is deleted.`,
+        );
+      }
+
+      const managerUser = await this.prisma.user.findUnique({
+        where: { id: managerUserId },
+      });
+      if (!managerUser) {
+        throw new NotFoundException(
+          `User with ID ${managerUserId} (to be manager) not found.`,
+        );
+      }
+
+      return await this.prisma.location.update({
+        where: { id: locationId },
+        data: { managerId: managerUserId },
+        include: { manager: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      )
+        throw error;
+      handlePrismaError(error);
+    }
+  }
+
+  async removeManagerFromLocation(
+    locationId: string,
+    actorUserId: string,
+  ): Promise<Location> {
+    try {
+      const canActorManageLocation =
+        await this.permissionsService.canManageLocation(
+          actorUserId,
+          locationId,
+        );
+      const actorIsAdmin =
+        (await this.prisma.user.findUnique({ where: { id: actorUserId } }))
+          ?.role === Role.ADMIN;
+
+      if (!canActorManageLocation && !actorIsAdmin) {
+        throw new ForbiddenException(
+          'You do not have permission to remove the manager from this location.',
+        );
+      }
+
+      const location = await this.prisma.location.findUnique({
+        where: { id: locationId, deletedAt: null },
+      });
+      if (!location) {
+        throw new NotFoundException(
+          `Location with ID ${locationId} not found or is deleted.`,
+        );
+      }
+      if (!location.managerId) {
+        return location;
+      }
+
+      return await this.prisma.location.update({
+        where: { id: locationId },
+        data: { managerId: null },
+      });
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      )
+        throw error;
       handlePrismaError(error);
     }
   }
