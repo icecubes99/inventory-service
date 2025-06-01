@@ -3,7 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -29,13 +29,26 @@ export class UserService {
           passwordHash: hashedPassword,
           ...rest,
         },
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          locationId: true,
+          deletedAt: true,
+          // Exclude passwordHash
+        },
       });
 
       if (!user) {
         throw new Error('User not created');
       }
 
-      return user;
+      return user as User;
     } catch (error) {
       handlePrismaError(error);
     }
@@ -43,8 +56,11 @@ export class UserService {
 
   async findByUsername(username: string): Promise<User> {
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { username },
+      const user = await this.prisma.user.findFirst({
+        where: {
+          username,
+          deletedAt: null,
+        },
       });
 
       if (!user) {
@@ -60,7 +76,24 @@ export class UserService {
 
   async findAll(): Promise<User[]> {
     try {
-      return await this.prisma.user.findMany();
+      return (await this.prisma.user.findMany({
+        where: {
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          locationId: true,
+          deletedAt: true,
+          // Exclude passwordHash
+        },
+      })) as User[];
     } catch (error) {
       handlePrismaError(error);
     }
@@ -68,15 +101,31 @@ export class UserService {
 
   async findOne(id: string): Promise<User> {
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { id },
+      const user = await this.prisma.user.findFirst({
+        where: {
+          id,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          locationId: true,
+          deletedAt: true,
+          // Exclude passwordHash
+        },
       });
 
       if (!user) {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
 
-      return user;
+      return user as User;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       handlePrismaError(error);
@@ -118,12 +167,24 @@ export class UserService {
     updateUserDto: UpdateUserDto,
     actorUserId?: string,
   ): Promise<User> {
-    if (updateUserDto.role && actorUserId) {
-      const actor = await this.prisma.user.findUnique({
-        where: { id: actorUserId },
+    // Check if we have actor info and verify they exist and are not deleted
+    if (actorUserId) {
+      const actor = await this.prisma.user.findFirst({
+        where: { id: actorUserId, deletedAt: null },
       });
-      if (actor?.role !== Role.ADMIN) {
+
+      if (!actor) {
+        throw new ForbiddenException('Invalid actor user.');
+      }
+
+      // Only ADMIN can change roles
+      if (updateUserDto.role && actor.role !== Role.ADMIN) {
         throw new ForbiddenException('Only ADMIN can change user roles.');
+      }
+
+      // Non-admin users can only update themselves (except for role changes)
+      if (actor.role !== Role.ADMIN && actorUserId !== id) {
+        throw new ForbiddenException('You can only update your own profile.');
       }
     }
 
@@ -138,16 +199,30 @@ export class UserService {
         updateData.passwordHash = await bcrypt.hash(password, salt);
       }
 
+      // Only include role if it's being updated and allowed
       if (updateUserDto.role) {
         updateData.role = updateUserDto.role;
       } else {
         delete updateData.role;
       }
 
-      return await this.prisma.user.update({
+      return (await this.prisma.user.update({
         where: { id },
         data: updateData,
-      });
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          email: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          locationId: true,
+          deletedAt: true,
+          // Exclude passwordHash
+        },
+      })) as User;
     } catch (error) {
       if (
         error instanceof NotFoundException ||
@@ -160,7 +235,7 @@ export class UserService {
 
   async remove(id: string, actorUserId: string): Promise<User> {
     const actor = await this.prisma.user.findUnique({
-      where: { id: actorUserId },
+      where: { id: actorUserId, deletedAt: null },
     });
     if (actor?.role !== Role.ADMIN && id !== actorUserId) {
       throw new ForbiddenException(
@@ -178,8 +253,11 @@ export class UserService {
         );
       }
 
-      return await this.prisma.user.delete({
+      return await this.prisma.user.update({
         where: { id },
+        data: {
+          deletedAt: new Date(),
+        },
       });
     } catch (error) {
       if (
@@ -203,8 +281,11 @@ export class UserService {
           locationId,
         );
       const actorIsAdmin =
-        (await this.prisma.user.findUnique({ where: { id: actorUserId } }))
-          ?.role === Role.ADMIN;
+        (
+          await this.prisma.user.findFirst({
+            where: { id: actorUserId, deletedAt: null },
+          })
+        )?.role === Role.ADMIN;
 
       if (!canActorManageLocation && !actorIsAdmin) {
         throw new ForbiddenException(
@@ -221,8 +302,8 @@ export class UserService {
         );
       }
 
-      const managerUser = await this.prisma.user.findUnique({
-        where: { id: managerUserId },
+      const managerUser = await this.prisma.user.findFirst({
+        where: { id: managerUserId, deletedAt: null },
       });
       if (!managerUser) {
         throw new NotFoundException(
@@ -256,8 +337,11 @@ export class UserService {
           locationId,
         );
       const actorIsAdmin =
-        (await this.prisma.user.findUnique({ where: { id: actorUserId } }))
-          ?.role === Role.ADMIN;
+        (
+          await this.prisma.user.findFirst({
+            where: { id: actorUserId, deletedAt: null },
+          })
+        )?.role === Role.ADMIN;
 
       if (!canActorManageLocation && !actorIsAdmin) {
         throw new ForbiddenException(

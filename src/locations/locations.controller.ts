@@ -28,6 +28,9 @@ import {
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { UserService } from '../user/user.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+
 @ApiTags('locations')
 @ApiBearerAuth()
 @Controller('locations')
@@ -39,7 +42,7 @@ export class LocationsController {
 
   @Post()
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Create a new location (ADMIN, WAREHOUSE_MANAGER)' })
   @ApiBody({ type: CreateLocationDto })
   @ApiResponse({
@@ -65,7 +68,7 @@ export class LocationsController {
     Role.FOREMAN,
     Role.SITE_MANAGER,
   )
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary:
       'Get all locations (ADMIN, WAREHOUSE_MANAGER, INVENTORY_MASTER, PURCHASER, FOREMAN, SITE_MANAGER)',
@@ -86,7 +89,7 @@ export class LocationsController {
     Role.FOREMAN,
     Role.SITE_MANAGER,
   )
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary:
       'Get locations by type (ADMIN, WAREHOUSE_MANAGER, INVENTORY_MASTER, PURCHASER, FOREMAN, SITE_MANAGER)',
@@ -119,7 +122,7 @@ export class LocationsController {
     Role.FOREMAN,
     Role.SITE_MANAGER,
   )
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary:
       'Get locations by status (ADMIN, WAREHOUSE_MANAGER, INVENTORY_MASTER, PURCHASER, FOREMAN, SITE_MANAGER)',
@@ -152,7 +155,7 @@ export class LocationsController {
     Role.FOREMAN,
     Role.SITE_MANAGER,
   )
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary:
       'Get a location by ID (ADMIN, WAREHOUSE_MANAGER, INVENTORY_MASTER, PURCHASER, FOREMAN, SITE_MANAGER)',
@@ -168,7 +171,7 @@ export class LocationsController {
 
   @Patch(':id')
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary:
       'Update a location (ADMIN, WAREHOUSE_MANAGER, or manager of this specific location)',
@@ -192,7 +195,7 @@ export class LocationsController {
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete a location (soft delete) (ADMIN, WAREHOUSE_MANAGER)',
@@ -212,7 +215,7 @@ export class LocationsController {
 
   @Post(':id/set-manager')
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Set or change the manager of a location' })
   @ApiParam({ name: 'id', description: 'Location ID' })
   @ApiBody({ type: SetManagerDto })
@@ -230,7 +233,7 @@ export class LocationsController {
 
   @Post(':id/remove-manager')
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Remove the manager from a location' })
   @ApiParam({ name: 'id', description: 'Location ID' })
   @HttpCode(HttpStatus.OK)
@@ -243,7 +246,7 @@ export class LocationsController {
 
   @Post(':locationId/assign-user')
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary: 'Assign a regular user to a location (not as manager)',
   })
@@ -262,7 +265,7 @@ export class LocationsController {
 
   @Post(':locationId/unassign-user')
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Unassign a regular user from a location' })
   @ApiParam({ name: 'locationId', type: 'string' })
   unassignUser(

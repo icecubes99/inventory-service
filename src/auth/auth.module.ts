@@ -9,7 +9,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TokenBlacklistService } from './token-blacklist.service';
 import * as cookieParser from 'cookie-parser';
 // import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { PrismaModule } from 'src/prisma/prisma.module';
+import { PrismaModule } from '../prisma/prisma.module';
 import { PermissionsService } from './permissions.service';
 
 @Module({

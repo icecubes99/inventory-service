@@ -73,4 +73,9 @@ export class TokenBlacklistService implements OnModuleInit {
       clearInterval(this.cleanupInterval);
     }
   }
+
+  // For testing purposes only
+  clearBlacklist(): void {
+    this.blacklistedTokens.clear();
+  }
 }

@@ -3,7 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { Location, LocationType, LocationStatus } from '@prisma/client';
@@ -399,13 +399,31 @@ export class LocationsService {
 
       await this.findOne(locationId);
 
-      const userToAssign = await this.prisma.user.findUnique({
-        where: { id: userId },
+      const userToAssign = await this.prisma.user.findFirst({
+        where: { id: userId, deletedAt: null },
       });
 
       if (!userToAssign) {
         throw new NotFoundException(
           `User with ID ${userId} to assign not found`,
+        );
+      }
+
+      // Check if user is already assigned to this location
+      const existingAssignment = await this.prisma.location.findFirst({
+        where: {
+          id: locationId,
+          assignedUsers: {
+            some: {
+              id: userId,
+            },
+          },
+        },
+      });
+
+      if (existingAssignment) {
+        throw new ForbiddenException(
+          `User with ID ${userId} is already assigned to this location.`,
         );
       }
 
@@ -473,21 +491,28 @@ export class LocationsService {
 
       await this.findOne(locationId);
 
-      const userToUnassign = await this.prisma.user.findFirst({
+      // Check if the user exists first
+      const userExists = await this.prisma.user.findFirst({
+        where: { id: userId, deletedAt: null },
+      });
+
+      if (!userExists) {
+        throw new NotFoundException(`User with ID ${userId} not found.`);
+      }
+
+      // Check if the user is actually assigned to this location
+      const locationWithUser = await this.prisma.location.findFirst({
         where: {
-          id: userId,
-          locationId: locationId,
+          id: locationId,
+          assignedUsers: {
+            some: {
+              id: userId,
+            },
+          },
         },
       });
 
-      if (!userToUnassign) {
-        const generalUserCheck = await this.prisma.user.findUnique({
-          where: { id: userId },
-        });
-        if (!generalUserCheck)
-          throw new NotFoundException(
-            `User with ID ${userId} to unassign not found at all.`,
-          );
+      if (!locationWithUser) {
         throw new NotFoundException(
           `User with ID ${userId} is not assigned to location ${locationId}.`,
         );

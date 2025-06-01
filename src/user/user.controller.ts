@@ -25,6 +25,8 @@ import {
 } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -34,7 +36,7 @@ export class UserController {
 
   @Post()
   @Roles(Role.ADMIN)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Create a new user (ADMIN only)' })
   @ApiBody({ type: CreateUserDto })
   @ApiResponse({
@@ -50,7 +52,7 @@ export class UserController {
 
   @Get()
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary: 'Get all users (ADMIN, WAREHOUSE_MANAGER, SITE_MANAGER)',
   })
@@ -74,7 +76,7 @@ export class UserController {
     Role.FOREMAN,
     Role.ACCOUNTING,
   )
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Get a user by id (ADMIN, managers, or self)' })
   @ApiParam({ name: 'id', type: 'string', description: 'UUID of the user' })
   @ApiResponse({
@@ -90,7 +92,7 @@ export class UserController {
 
   @Get(':id/managed-locations')
   @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({ summary: 'Get locations managed by this user' })
   @ApiParam({ name: 'id', type: 'string', description: 'UUID of the user' })
   @ApiResponse({
@@ -114,7 +116,7 @@ export class UserController {
     Role.FOREMAN,
     Role.ACCOUNTING,
   )
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
     summary:
       'Update a user (ADMIN can update anyone, others can update self only)',
@@ -148,7 +150,7 @@ export class UserController {
     Role.FOREMAN,
     Role.ACCOUNTING,
   )
-  @UseGuards(/** AuthGuard('jwt'), RolesGuard */)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary:
