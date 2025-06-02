@@ -10,10 +10,12 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { SearchUsersDto } from './dto/search-users.dto';
 import { User, Role } from '@prisma/client';
 import {
   ApiTags,
@@ -22,6 +24,7 @@ import {
   ApiParam,
   ApiBody,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
@@ -64,6 +67,99 @@ export class UserController {
   @ApiResponse({ status: 403, description: 'Forbidden.' })
   findAll(): Promise<User[]> {
     return this.userService.findAll();
+  }
+
+  @Get('paginated')
+  @Roles(Role.ADMIN, Role.WAREHOUSE_MANAGER, Role.SITE_MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({
+    summary:
+      'Get users with pagination and search (ADMIN, WAREHOUSE_MANAGER, SITE_MANAGER)',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default: 10, max: 100)',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search term for username, name, or email',
+  })
+  @ApiQuery({
+    name: 'role',
+    required: false,
+    enum: Role,
+    description: 'Filter by user role',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: 'Filter by user status',
+  })
+  @ApiQuery({
+    name: 'locationId',
+    required: false,
+    type: String,
+    description: 'Filter by location ID',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Return paginated users with metadata.',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                example: '123e4567-e89b-12d3-a456-426614174000',
+              },
+              username: { type: 'string', example: 'john_doe' },
+              name: { type: 'string', example: 'John Doe' },
+              email: { type: 'string', example: 'john@example.com' },
+              role: { type: 'string', example: 'PURCHASER' },
+              status: { type: 'string', example: 'ACTIVE' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+              locationId: { type: 'string', nullable: true },
+              deletedAt: { type: 'string', nullable: true },
+            },
+          },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            page: { type: 'number', example: 1 },
+            limit: { type: 'number', example: 10 },
+            total: { type: 'number', example: 100 },
+            totalPages: { type: 'number', example: 10 },
+            hasNextPage: { type: 'boolean', example: true },
+            hasPreviousPage: { type: 'boolean', example: false },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid query parameters.',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  findAllPaginated(@Query() searchDto: SearchUsersDto) {
+    return this.userService.findAllPaginated(searchDto);
   }
 
   @Get(':id')

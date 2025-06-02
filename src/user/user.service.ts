@@ -7,9 +7,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { SearchUsersDto } from './dto/search-users.dto';
 import { User, Location, Role, Prisma } from '@prisma/client';
 import { handlePrismaError } from '../common/utils/prisma-error-handler';
 import { PermissionsService } from '../auth/permissions.service';
+import { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 
 @Injectable()
 export class UserService {
@@ -94,6 +96,79 @@ export class UserService {
           // Exclude passwordHash
         },
       })) as User[];
+    } catch (error) {
+      handlePrismaError(error);
+    }
+  }
+
+  async findAllPaginated(
+    searchDto: SearchUsersDto,
+  ): Promise<PaginatedResponse<User>> {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        search,
+        role,
+        status,
+        locationId,
+      } = searchDto;
+      const skip = (page - 1) * limit;
+
+      // Build where clause
+      const where: Prisma.UserWhereInput = {
+        deletedAt: null,
+        ...(search && {
+          OR: [
+            { username: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        }),
+        ...(role && { role }),
+        ...(status && { status }),
+        ...(locationId && { locationId }),
+      };
+
+      const select = {
+        id: true,
+        username: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        locationId: true,
+        deletedAt: true,
+        // Exclude passwordHash
+      };
+
+      // Execute queries in parallel
+      const [users, total] = await Promise.all([
+        this.prisma.user.findMany({
+          where,
+          select,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.user.count({ where }),
+      ]);
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        data: users as User[],
+        meta: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
+      };
     } catch (error) {
       handlePrismaError(error);
     }
