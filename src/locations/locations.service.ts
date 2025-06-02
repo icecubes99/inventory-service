@@ -6,9 +6,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
-import { Location, LocationType, LocationStatus } from '@prisma/client';
+import { SearchLocationsDto } from './dto/search-locations.dto';
+import { Location, LocationType, LocationStatus, Prisma } from '@prisma/client';
 import { handlePrismaError } from '../common/utils/prisma-error-handler';
 import { PermissionsService } from '../auth/permissions.service';
+import { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 
 @Injectable()
 export class LocationsService {
@@ -124,6 +126,93 @@ export class LocationsService {
           name: 'asc',
         },
       });
+    } catch (error) {
+      handlePrismaError(error);
+    }
+  }
+
+  async findAllPaginated(
+    searchDto: SearchLocationsDto,
+  ): Promise<PaginatedResponse<Location>> {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        search,
+        type,
+        status,
+        managerId,
+        hasManager,
+      } = searchDto;
+      const skip = (page - 1) * limit;
+
+      // Build where clause
+      const where: Prisma.LocationWhereInput = {
+        deletedAt: null,
+        ...(search && {
+          name: { contains: search, mode: 'insensitive' },
+        }),
+        ...(type && { type }),
+        ...(status && { status }),
+        ...(managerId && { managerId }),
+        ...(hasManager !== undefined && {
+          managerId: hasManager ? { not: null } : null,
+        }),
+      };
+
+      const include = {
+        manager: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            email: true,
+            role: true,
+          },
+        },
+        assignedUsers: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            inventory: true,
+            MrfsFrom: true,
+            DeliveriesTo: true,
+            DeliveriesFrom: true,
+          },
+        },
+      };
+
+      // Execute queries in parallel
+      const [locations, total] = await Promise.all([
+        this.prisma.location.findMany({
+          where,
+          include,
+          skip,
+          take: limit,
+          orderBy: { name: 'asc' },
+        }),
+        this.prisma.location.count({ where }),
+      ]);
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        data: locations,
+        meta: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
+      };
     } catch (error) {
       handlePrismaError(error);
     }

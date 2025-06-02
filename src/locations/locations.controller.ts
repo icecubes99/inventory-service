@@ -10,10 +10,12 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { SearchLocationsDto } from './dto/search-locations.dto';
 import { AssignUserDto } from './dto/assign-user.dto';
 import { SetManagerDto } from './dto/set-manager.dto';
 import { LocationStatus, LocationType, Role } from '@prisma/client';
@@ -24,6 +26,7 @@ import {
   ApiParam,
   ApiBody,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
@@ -78,6 +81,143 @@ export class LocationsController {
   @ApiResponse({ status: 403, description: 'Forbidden.' })
   findAll() {
     return this.locationsService.findAll();
+  }
+
+  @Get('paginated')
+  @Roles(
+    Role.ADMIN,
+    Role.WAREHOUSE_MANAGER,
+    Role.INVENTORY_MASTER,
+    Role.PURCHASER,
+    Role.FOREMAN,
+    Role.SITE_MANAGER,
+  )
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({
+    summary:
+      'Get locations with pagination and search (ADMIN, WAREHOUSE_MANAGER, INVENTORY_MASTER, PURCHASER, FOREMAN, SITE_MANAGER)',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default: 10, max: 100)',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search term for location name',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    enum: LocationType,
+    description: 'Filter by location type',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: LocationStatus,
+    description: 'Filter by location status',
+  })
+  @ApiQuery({
+    name: 'managerId',
+    required: false,
+    type: String,
+    description: 'Filter by manager ID',
+  })
+  @ApiQuery({
+    name: 'hasManager',
+    required: false,
+    type: Boolean,
+    description: 'Filter locations with/without manager',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Return paginated locations with metadata.',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                example: '123e4567-e89b-12d3-a456-426614174000',
+              },
+              name: { type: 'string', example: 'Central Warehouse Manila' },
+              type: { type: 'string', example: 'WAREHOUSE' },
+              status: { type: 'string', example: 'ACTIVE' },
+              managerId: { type: 'string', nullable: true },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+              deletedAt: { type: 'string', nullable: true },
+              manager: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  username: { type: 'string' },
+                  email: { type: 'string' },
+                  role: { type: 'string' },
+                },
+              },
+              assignedUsers: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    username: { type: 'string' },
+                    email: { type: 'string' },
+                  },
+                },
+              },
+              _count: {
+                type: 'object',
+                properties: {
+                  inventory: { type: 'number' },
+                  MrfsFrom: { type: 'number' },
+                  DeliveriesTo: { type: 'number' },
+                  DeliveriesFrom: { type: 'number' },
+                },
+              },
+            },
+          },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            page: { type: 'number', example: 1 },
+            limit: { type: 'number', example: 10 },
+            total: { type: 'number', example: 6 },
+            totalPages: { type: 'number', example: 1 },
+            hasNextPage: { type: 'boolean', example: false },
+            hasPreviousPage: { type: 'boolean', example: false },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Invalid query parameters.',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  findAllPaginated(@Query() searchDto: SearchLocationsDto) {
+    return this.locationsService.findAllPaginated(searchDto);
   }
 
   @Get('type/:type')
