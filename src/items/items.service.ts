@@ -7,8 +7,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
-import { Item, ItemStatus, Role } from '@prisma/client';
+import { SearchItemsDto } from './dto/search-items.dto';
+import { Item, ItemStatus, Role, Prisma } from '@prisma/client';
 import { handlePrismaError } from '../common/utils/prisma-error-handler';
+import {
+  PaginatedResponse,
+  createPaginatedResponse,
+} from '../common/interfaces';
 
 @Injectable()
 export class ItemsService {
@@ -102,6 +107,74 @@ export class ItemsService {
           code: 'asc',
         },
       });
+    } catch (error) {
+      handlePrismaError(error);
+    }
+  }
+
+  async findAllPaginated(
+    searchDto: SearchItemsDto,
+  ): Promise<PaginatedResponse<Item>> {
+    try {
+      // Build where clause
+      const whereClause: Prisma.ItemWhereInput = {
+        deletedAt: null,
+        ...(searchDto.status && { status: searchDto.status }),
+        ...(searchDto.unitOfMeasurement && {
+          unitOfMeasurement: {
+            contains: searchDto.unitOfMeasurement,
+            mode: 'insensitive',
+          },
+        }),
+        ...(searchDto.search && {
+          OR: [
+            {
+              code: {
+                contains: searchDto.search,
+                mode: 'insensitive',
+              },
+            },
+            {
+              description: {
+                contains: searchDto.search,
+                mode: 'insensitive',
+              },
+            },
+          ],
+        }),
+      };
+
+      // Get total count
+      const total = await this.prisma.item.count({
+        where: whereClause,
+      });
+
+      // Get paginated data
+      const items = await this.prisma.item.findMany({
+        where: whereClause,
+        include: {
+          _count: {
+            select: {
+              mrfLineItems: true,
+              poLineItems: true,
+              drLineItems: true,
+              inventoryItems: true,
+            },
+          },
+        },
+        orderBy: {
+          code: 'asc',
+        },
+        skip: searchDto.skip,
+        take: searchDto.take,
+      });
+
+      return createPaginatedResponse(
+        items,
+        total,
+        searchDto.page,
+        searchDto.limit,
+      );
     } catch (error) {
       handlePrismaError(error);
     }

@@ -15,6 +15,7 @@ import {
 import { ItemsService } from './items.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { SearchItemsDto } from './dto/search-items.dto';
 import { ItemStatus, Role } from '@prisma/client';
 import {
   ApiTags,
@@ -58,6 +59,53 @@ export class ItemsController {
     return this.itemsService.create(createItemDto, req.user.id);
   }
 
+  @Get('paginated')
+  @Roles(
+    Role.ADMIN,
+    Role.WAREHOUSE_MANAGER,
+    Role.INVENTORY_MASTER,
+    Role.PURCHASER,
+    Role.FOREMAN,
+    Role.SITE_MANAGER,
+    Role.ACCOUNTING,
+  )
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({
+    summary:
+      'Get items with pagination and filtering (all authenticated users)',
+    description:
+      'Returns paginated items with optional search and filtering capabilities',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Return paginated items with metadata.',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { type: 'object' },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            page: { type: 'number', example: 1 },
+            limit: { type: 'number', example: 10 },
+            total: { type: 'number', example: 50 },
+            totalPages: { type: 'number', example: 5 },
+            hasNextPage: { type: 'boolean', example: true },
+            hasPreviousPage: { type: 'boolean', example: false },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  findAllPaginated(@Query() searchDto: SearchItemsDto) {
+    return this.itemsService.findAllPaginated(searchDto);
+  }
+
   @Get()
   @Roles(
     Role.ADMIN,
@@ -70,7 +118,9 @@ export class ItemsController {
   )
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
-    summary: 'Get all items (all authenticated users)',
+    summary: 'Get all items (all authenticated users) - Legacy endpoint',
+    description:
+      'Returns all items without pagination. Use /items/paginated for large datasets.',
   })
   @ApiResponse({ status: 200, description: 'Return all items.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
@@ -91,7 +141,10 @@ export class ItemsController {
   )
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
-    summary: 'Search items by code or description (all authenticated users)',
+    summary:
+      'Search items by code or description (all authenticated users) - Legacy endpoint',
+    description:
+      'Use /items/paginated with search parameter for better performance.',
   })
   @ApiQuery({
     name: 'q',
@@ -120,7 +173,9 @@ export class ItemsController {
   )
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiOperation({
-    summary: 'Get items by status (all authenticated users)',
+    summary: 'Get items by status (all authenticated users) - Legacy endpoint',
+    description:
+      'Use /items/paginated with status parameter for better performance.',
   })
   @ApiParam({
     name: 'status',
