@@ -4,6 +4,7 @@ import {
   LocationType,
   LocationStatus,
   UserStatus,
+  ItemStatus,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
@@ -15,6 +16,7 @@ async function main() {
   // Clean existing data (in reverse dependency order)
   await prisma.user.deleteMany({});
   await prisma.location.deleteMany({});
+  await prisma.item.deleteMany({});
 
   console.log('🧹 Cleaned existing data');
 
@@ -293,6 +295,110 @@ async function main() {
 
   console.log('✅ Updated locations with managers');
 
+  // Step 4: Create sample items
+  const itemsData = [
+    {
+      code: 'STL-RBR-12MM',
+      description: 'Steel Rebar 12mm',
+      unitOfMeasurement: 'pieces',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'STL-RBR-16MM',
+      description: 'Steel Rebar 16mm',
+      unitOfMeasurement: 'pieces',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'STL-RBR-20MM',
+      description: 'Steel Rebar 20mm',
+      unitOfMeasurement: 'pieces',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'CMT-OPC-50KG',
+      description: 'Ordinary Portland Cement 50kg',
+      unitOfMeasurement: 'bags',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'AGG-SAND-FINE',
+      description: 'Fine Sand',
+      unitOfMeasurement: 'cubic meters',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'AGG-GRAVEL-34',
+      description: 'Gravel 3/4 inch',
+      unitOfMeasurement: 'cubic meters',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'WD-PLY-12MM',
+      description: 'Marine Plywood 12mm',
+      unitOfMeasurement: 'pieces',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'WD-2X4-8FT',
+      description: 'Lumber 2x4 8ft',
+      unitOfMeasurement: 'pieces',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'WD-2X6-10FT',
+      description: 'Lumber 2x6 10ft',
+      unitOfMeasurement: 'pieces',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'ELC-WR-12AWG',
+      description: 'Electrical Wire 12 AWG',
+      unitOfMeasurement: 'meters',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'PLB-PVC-4IN',
+      description: 'PVC Pipe 4 inch',
+      unitOfMeasurement: 'pieces',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'HW-NT-BLT-M12',
+      description: 'Nuts and Bolts M12',
+      unitOfMeasurement: 'sets',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'MISC-NAILS-4IN',
+      description: 'Common Nails 4 inch',
+      unitOfMeasurement: 'kg',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'MISC-PAINT-WH',
+      description: 'White Paint - Latex',
+      unitOfMeasurement: 'gallons',
+      status: ItemStatus.ACTIVE,
+    },
+    {
+      code: 'MISC-PAINT-BL',
+      description: 'Blue Paint - Latex',
+      unitOfMeasurement: 'gallons',
+      status: ItemStatus.INACTIVE,
+    },
+  ];
+
+  await prisma.item.createMany({
+    data: itemsData,
+  });
+
+  const createdItems = await prisma.item.findMany({
+    orderBy: { code: 'asc' },
+  });
+
+  console.log(`✅ Created ${createdItems.length} items`);
+
   // Display summary
   const finalUsers = await prisma.user.findMany({
     include: {
@@ -316,6 +422,10 @@ async function main() {
       },
     },
     orderBy: { name: 'asc' },
+  });
+
+  const finalItems = await prisma.item.findMany({
+    orderBy: { code: 'asc' },
   });
 
   console.log('\n📊 SEEDING SUMMARY:');
@@ -345,6 +455,29 @@ async function main() {
       }
     }
     console.log('');
+  }
+
+  console.log('\n📦 ITEMS:');
+  const itemsByStatus = finalItems.reduce(
+    (acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  for (const [status, count] of Object.entries(itemsByStatus)) {
+    console.log(`  ${status}: ${count} items`);
+  }
+
+  console.log('\n  Sample Items:');
+  finalItems.slice(0, 5).forEach((item) => {
+    console.log(
+      `    - ${item.code}: ${item.description} (${item.unitOfMeasurement})`,
+    );
+  });
+  if (finalItems.length > 5) {
+    console.log(`    ... and ${finalItems.length - 5} more items`);
   }
 
   console.log('\n🔑 DEFAULT LOGIN CREDENTIALS:');
